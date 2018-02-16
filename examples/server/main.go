@@ -41,12 +41,16 @@ func init() {
 }
 
 func main() {
+	jr := async.NewJobRepository()
 	jm := async.NewJobManager(
-		async.NewJobRepository(),
-		async.NewFunctionExecutor(fmt.Sprintf("http://127.0.0.1:%d", cli.Port)),
+		jr,
 	)
 
-	go jm.BackgroundProcess()
+	//go jm.BackgroundProcess()
+
+	d := async.NewDispatcher(jm, async.NewFunctionExecutor(fmt.Sprintf("http://127.0.0.1:%d", cli.Port)))
+	p := async.NewPoller(jr)
+	go p.Poll(d)
 
 	// exec := executor.NewExecutor(jobs, workflows, functions,
 	// 	map[string]executor.FunctionExecutor{

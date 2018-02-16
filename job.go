@@ -113,24 +113,32 @@ func (r *memoryJobRepository) GetPending() (*Job, bool) {
 	return j, ok
 }
 
-type JobManager struct {
-	repository       JobRepository
-	functionExecutor FunctionExecutor
+type JobManager interface {
+	GetByID(uuid.UUID) (*Job, error)
+	Create(string, []*Function, map[string]interface{}) (*Job, error)
+
+	SetState(*Job, string) error
+	Reschedule(*Job) error
+	IncrCurrentFunctionRetryCount(*Job) error
+	IncrCurrentFunction(*Job) error
 }
 
-func NewJobManager(repo JobRepository, fexec FunctionExecutor) *JobManager {
+type jobManager struct {
+	repository JobRepository
+}
 
-	return &JobManager{
-		repository:       repo,
-		functionExecutor: fexec,
+func NewJobManager(repo JobRepository) *jobManager {
+
+	return &jobManager{
+		repository: repo,
 	}
 }
 
-func (m *JobManager) GetByID(id uuid.UUID) (*Job, error) {
+func (m *jobManager) GetByID(id uuid.UUID) (*Job, error) {
 	return m.repository.Get(id)
 }
 
-func (m *JobManager) Create(name string, functions []*Function, data map[string]interface{}) (*Job, error) {
+func (m *jobManager) Create(name string, functions []*Function, data map[string]interface{}) (*Job, error) {
 
 	if len(functions) == 0 {
 		return nil, fmt.Errorf("cannot create a job with empty functions")
@@ -147,74 +155,32 @@ func (m *JobManager) Create(name string, functions []*Function, data map[string]
 	return m.repository.Create(j)
 }
 
-func (m *JobManager) Execute(j *Job) error {
+func (m *jobManager) SetState(j *Job, state string) error {
 	var err error
 
-	j.State = StateDoing
+	j.State = state
 	if j, err = m.repository.Update(j); err != nil {
 		return err
 	}
 
-	for i := range j.Functions {
-		if i != j.CurrentFunction {
-			log.Printf("Skip job step %s(%d), current step is %s(%d)", j.Functions[i].Name, i, j.Functions[j.CurrentFunction].Name, j.CurrentFunction)
-			continue
-		}
-
-		// Execute function
-		if err = m.executeCurrentFunction(j); err != nil {
-			break
-		}
-
-		j.CurrentFunction += 1
-		if j, err = m.repository.Update(j); err != nil {
-			break
-		}
-	}
-
-	switch err {
-	case errReschedule:
-		return m.reschedule(j)
-	case errAbort:
-		return m.abort(j)
-	case nil:
-		return m.done(j)
-	default:
-		return err
-	}
+	return nil
 }
 
-func (m *JobManager) reschedule(j *Job) error {
-	var err error
+func (m *jobManager) Reschedule(j *Job) error {
 
 	log.Printf("reschedule %s - %s", j.ID, j.Name)
 
-	j.State = StatePending
-	if j, err = m.repository.Update(j); err != nil {
+	if err := m.SetState(j, StatePending); err != nil {
 		return err
 	}
 
 	return m.repository.Schedule(j)
 }
 
-func (m *JobManager) abort(j *Job) error {
+func (m *jobManager) IncrCurrentFunctionRetryCount(j *Job) error {
 	var err error
 
-	log.Printf("abort %s - %s", j.ID, j.Name)
-
-	j.State = StateFailed
-	if j, err = m.repository.Update(j); err != nil {
-		return err
-	}
-
-	return nil
-}
-func (m *JobManager) done(j *Job) error {
-	var err error
-
-	log.Printf("done %s - %s", j.ID, j.Name)
-
-	j.State = StateDone
+	j.Functions[j.CurrentFunction].RetryCount += 1
 	if j, err = m.repository.Update(j); err != nil {
 		return err
 	}
@@ -222,42 +188,13 @@ func (m *JobManager) done(j *Job) error {
 	return nil
 }
 
-func (m *JobManager) executeCurrentFunction(j *Job) error {
+func (m *jobManager) IncrCurrentFunction(j *Job) error {
 	var err error
 
-	f := j.Functions[j.CurrentFunction]
-	data := j.Data
-
-	f.RetryCount += 1
+	j.CurrentFunction += 1
 	if j, err = m.repository.Update(j); err != nil {
 		return err
 	}
 
-	if err = m.functionExecutor.Execute(*f, data); err != nil {
-		if f.CanReschedule() {
-			log.Printf("function %s failed, rescheduling", f.Name)
-			return errReschedule
-		} else {
-			log.Printf("function %s failed, cannot reschedule", f.Name)
-			return errAbort
-		}
-	}
-
 	return nil
-}
-
-func (m *JobManager) BackgroundProcess() {
-
-	for {
-		j, ok := m.repository.GetPending()
-		if !ok {
-			log.Printf("Stop processing job...")
-			return
-		}
-
-		log.Printf("Processing job %s", j.ID)
-		if err := m.Execute(j); err != nil {
-			log.Printf("BackgroundProcess error: %v", err)
-		}
-	}
 }

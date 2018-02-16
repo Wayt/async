@@ -9,7 +9,7 @@ import (
 )
 
 type HttpJobHandler struct {
-	jm *async.JobManager
+	jm async.JobManager
 }
 
 func (h *HttpJobHandler) Get(c *gin.Context) {
@@ -65,7 +65,7 @@ func (h *HttpJobHandler) Create(c *gin.Context) {
 	})
 }
 
-func NewHttpJobHandler(e *gin.Engine, jm *async.JobManager) {
+func NewHttpJobHandler(e *gin.Engine, jm async.JobManager) {
 
 	handler := &HttpJobHandler{
 		jm: jm,
