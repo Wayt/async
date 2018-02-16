@@ -2,7 +2,6 @@ package async
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/satori/go.uuid"
 )
@@ -62,7 +61,7 @@ func (m *jobManager) SetState(j *Job, state string) error {
 
 func (m *jobManager) Reschedule(j *Job) error {
 
-	log.Printf("reschedule %s - %s", j.ID, j.Name)
+	logger.Printf("job_manager: Reschedule %s - %s", j.ID, j.Name)
 
 	if err := m.SetState(j, StatePending); err != nil {
 		return err

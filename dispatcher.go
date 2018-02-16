@@ -1,7 +1,5 @@
 package async
 
-import "log"
-
 type Dispatcher interface {
 	Dispatch(*Job) error
 }
@@ -28,7 +26,7 @@ func (d *dispatcher) Dispatch(j *Job) error {
 
 	for i := range j.Functions {
 		if i != j.CurrentFunction {
-			log.Printf("Skip job step %s(%d), current step is %s(%d)", j.Functions[i].Name, i, j.Functions[j.CurrentFunction].Name, j.CurrentFunction)
+			logger.Printf("dispatcher: Skip job step %s(%d), current step is %s(%d)", j.Functions[i].Name, i, j.Functions[j.CurrentFunction].Name, j.CurrentFunction)
 			continue
 		}
 
@@ -65,12 +63,12 @@ func (d *dispatcher) executeCurrentFunction(j *Job) error {
 	}
 
 	if err = d.functionExecutor.Execute(*f, data); err != nil {
-		if f.CanReschedule() {
-			log.Printf("function %s failed, rescheduling", f.Name)
-			return errReschedule
-		} else {
-			log.Printf("function %s failed, cannot reschedule", f.Name)
+		if err := f.CanReschedule(); err != nil {
+			logger.Printf("dispatcher: Function %s failed, cannot reschedule: %v", f.Name, err)
 			return errAbort
+		} else {
+			logger.Printf("dispatcher: Function %s failed, rescheduling", f.Name)
+			return errReschedule
 		}
 	}
 

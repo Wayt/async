@@ -3,11 +3,14 @@ package async
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/pkg/errors"
 	cli "github.com/wayt/async/client/async"
+)
+
+var (
+	ErrFunctionExecutionFailed = errors.New("function execution failed")
 )
 
 type FunctionExecutor interface {
@@ -48,13 +51,11 @@ func (e *defaultFunctionExecutor) Execute(f Function, data map[string]interface{
 	// Nothing to read
 	resp.Body.Close()
 
-	log.Printf("[%s] - %d - %s %s", f.Name, resp.StatusCode, req.Method, req.URL.String())
+	logger.Printf("function_executor: executed [%s]: %d - %s %s", f.Name, resp.StatusCode, req.Method, req.URL.String())
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return errors.New("function failed")
+		return ErrFunctionExecutionFailed
 	}
-
-	log.Printf("%s executed", f.Name)
 
 	return nil
 }

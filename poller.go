@@ -1,7 +1,5 @@
 package async
 
-import "log"
-
 type Poller interface {
 	Poll(Dispatcher)
 }
@@ -22,14 +20,14 @@ func (p *poller) Poll(dsp Dispatcher) {
 
 		j, ok := p.repository.GetPending()
 		if !ok {
-			log.Printf("Poller received a stop from repository")
+			logger.Printf("poller: received a stop signal from repository")
 			return
 		}
 
-		log.Printf("Polled %s - %s", j.ID, j.Name)
+		logger.Printf("poller: received: %s - %s", j.ID, j.Name)
 
 		if err := dsp.Dispatch(j); err != nil {
-			log.Printf("error during dispatch: %v", err)
+			logger.Printf("poller: error during dispatch: %v", err)
 		}
 	}
 }

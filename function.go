@@ -1,5 +1,12 @@
 package async
 
+import "errors"
+
+var (
+	ErrNoRetryOption     = errors.New("no retry option")
+	ErrRetryLimitExceded = errors.New("retry limit exceded")
+)
+
 type RetryOptions struct {
 	RetryLimit int32 `json:"retry_limit"`
 }
@@ -12,14 +19,14 @@ type Function struct {
 	RetryOptions *RetryOptions `json:"retry_options,omitempty"`
 }
 
-func (f *Function) CanReschedule() bool {
+func (f *Function) CanReschedule() error {
 	if f.RetryOptions == nil {
-		return false
+		return ErrNoRetryOption
 	}
 
-	if f.RetryCount < f.RetryOptions.RetryLimit {
-		return true
+	if f.RetryCount >= f.RetryOptions.RetryLimit {
+		return ErrRetryLimitExceded
 	}
 
-	return false
+	return nil
 }
