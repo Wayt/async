@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wayt/async"
-	"github.com/wayt/async/api"
 	cli "github.com/wayt/async/client/async"
 )
 
@@ -20,6 +20,7 @@ func init() {
 
 	cli.Func("/v1/test-1", func(ctx context.Context) error {
 
+		time.Sleep(5 * time.Second)
 		fmt.Println("Test 1")
 		return nil
 	})
@@ -32,6 +33,7 @@ func init() {
 
 	cli.Func("/v1/test-fail", func(ctx context.Context) error {
 
+		time.Sleep(15 * time.Second)
 		fmt.Println("Test fail")
 		return fmt.Errorf("Test fail")
 	})
@@ -49,24 +51,17 @@ func main() {
 	cr := async.NewCallbackRepository()
 	cm := async.NewCallbackManager(cr)
 
-	//go jm.BackgroundProcess()
-
 	d := async.NewDispatcher(jm, cm, async.NewFunctionExecutor(fmt.Sprintf("http://127.0.0.1:%d", cli.Port)))
 	p := async.NewPoller(jr)
 	go p.Poll(d)
 
-	// exec := executor.NewExecutor(jobs, workflows, functions,
-	// 	map[string]executor.FunctionExecutor{
-	// 		"default": executor.NewDefaultFunctionExecutor(
-	// 	})
-	// for i := 0; i < runtime.NumCPU(); i++ {
-	// 	w := worker.NewWorker(jobs, exec)
-	// 	go w.Work()
-	// }
+	rescheduler := async.NewExpiredRescheduler(jm, cm)
+	go rescheduler.Run()
 
 	e := gin.Default()
 
-	api.NewHttpJobHandler(e, jm)
+	async.NewHttpJobHandler(e, jm)
+	async.NewHttpCallbackHandler(e, cm, jm)
 
 	e.Run(":8080")
 }

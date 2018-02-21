@@ -32,6 +32,10 @@ type Job struct {
 	UpdatedAt       time.Time              `json:"updated_at"`
 }
 
+func (j *Job) GetCurrentFunction() *Function {
+	return j.Functions[j.CurrentFunction]
+}
+
 // JobRepository
 
 type JobRepository interface {

@@ -2,6 +2,7 @@ package async
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/satori/go.uuid"
 )
@@ -12,8 +13,11 @@ type JobManager interface {
 
 	SetState(*Job, string) error
 	Reschedule(*Job) error
+	RescheduleID(uuid.UUID) error
 	IncrCurrentFunctionRetryCount(*Job) error
 	IncrCurrentFunction(*Job) error
+
+	HandleCallback(*Callback, int) error
 }
 
 type jobManager struct {
@@ -64,15 +68,35 @@ func (m *jobManager) SetState(j *Job, state string) error {
 	return nil
 }
 
-func (m *jobManager) Reschedule(j *Job) error {
+func (m *jobManager) RescheduleID(id uuid.UUID) error {
 
-	logger.Printf("job_manager: Reschedule %s - %s", j.ID, j.Name)
-
-	if err := m.SetState(j, StatePending); err != nil {
+	j, err := m.GetByID(id)
+	if err != nil {
 		return err
 	}
 
-	return m.repository.Schedule(j)
+	return m.Reschedule(j)
+}
+
+func (m *jobManager) Reschedule(j *Job) error {
+
+	logger.Printf("job_manager: Reschedule job %s - %s", j.ID, j.Name)
+
+	currentFunc := j.GetCurrentFunction()
+	if err := currentFunc.CanReschedule(); err != nil {
+		logger.Printf("job_manager: Cannot reschedule %s - %s: %v", j.ID, j.Name, err)
+
+		if err := m.SetState(j, StateFailed); err != nil {
+			return err
+		}
+		return nil
+	} else {
+		if err := m.SetState(j, StatePending); err != nil {
+			return err
+		}
+
+		return m.repository.Schedule(j)
+	}
 }
 
 func (m *jobManager) IncrCurrentFunctionRetryCount(j *Job) error {
@@ -95,4 +119,30 @@ func (m *jobManager) IncrCurrentFunction(j *Job) error {
 	}
 
 	return nil
+}
+
+func (m *jobManager) HandleCallback(c *Callback, statusCode int) error {
+
+	job, err := m.GetByID(c.JobID)
+	if err != nil {
+		return err
+	}
+
+	logger.Printf("job_manager: handle callback %s for job %s, statusCode: %d", c.ID, job.ID, statusCode)
+
+	switch statusCode {
+	case http.StatusInternalServerError:
+		return m.Reschedule(job)
+	case http.StatusRequestTimeout:
+		return m.Reschedule(job)
+	case http.StatusOK:
+		if err = m.IncrCurrentFunction(job); err != nil {
+			return err
+		}
+		return m.Reschedule(job)
+	default:
+		err = fmt.Errorf("unknown StatusCode %d", statusCode)
+		logger.Printf("job_manager: %v in Callback %s", err, c.ID)
+		return err
+	}
 }

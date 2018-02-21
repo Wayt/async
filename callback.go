@@ -9,6 +9,8 @@ import (
 	cli "github.com/wayt/async/client/async"
 )
 
+var DefaultCallbackTimeout = 1 * time.Minute
+
 type Callback struct {
 	ID        uuid.UUID `json:"callback_id"`
 	JobID     uuid.UUID `json:"job_id"`
@@ -21,7 +23,7 @@ func (c *Callback) URL() string {
 	// FIXME: this should be configurable or automatic
 	apiURL := "http://127.0.0.1:8080"
 
-	return fmt.Sprintf("%s/v1/job/%s/callback/%s", apiURL, c.JobID.String(), c.ID.String())
+	return fmt.Sprintf("%s/v1/callback/%s", apiURL, c.ID.String())
 }
 
 func (c *Callback) BuildFunctionCallback() cli.FunctionCallback {
@@ -33,12 +35,17 @@ func (c *Callback) BuildFunctionCallback() cli.FunctionCallback {
 	}
 }
 
+func (c *Callback) IsExpired() bool {
+	return time.Now().After(c.ExpiredAt)
+}
+
 // CallbackRepository
 
 type CallbackRepository interface {
 	Get(uuid.UUID) (*Callback, error)
 	Create(*Callback) (*Callback, error)
 	Delete(uuid.UUID) error
+	All() ([]*Callback, error)
 }
 
 // In memory callback repository
@@ -82,4 +89,14 @@ func (r *callbackRepository) Delete(id uuid.UUID) error {
 	r.db.Delete(id.String())
 
 	return nil
+}
+
+func (r *callbackRepository) All() ([]*Callback, error) {
+
+	callbacks := make([]*Callback, 0, r.db.ItemCount())
+	for _, item := range r.db.Items() {
+		callbacks = append(callbacks, item.Object.(*Callback))
+	}
+
+	return callbacks, nil
 }

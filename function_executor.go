@@ -54,7 +54,7 @@ func (e *defaultFunctionExecutor) Execute(callback *Callback, f Function, data m
 	// Nothing to read
 	resp.Body.Close()
 
-	logger.Printf("function_executor: executed [%s]: %d - %s %s", f.Name, resp.StatusCode, req.Method, req.URL.String())
+	logger.Printf("function_executor: called %s %s - %d - function: %s", req.Method, req.URL.String(), resp.StatusCode, f.Name)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return ErrFunctionExecutionFailed

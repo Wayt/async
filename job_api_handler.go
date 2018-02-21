@@ -1,15 +1,14 @@
-package api
+package async
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	uuid "github.com/satori/go.uuid"
-	"github.com/wayt/async"
 )
 
 type HttpJobHandler struct {
-	jm async.JobManager
+	jm JobManager
 }
 
 func (h *HttpJobHandler) Get(c *gin.Context) {
@@ -37,7 +36,7 @@ func (h *HttpJobHandler) Get(c *gin.Context) {
 
 type CreateIn struct {
 	Name      string                 `json:"name" binding:"required"`
-	Functions []*async.Function      `json:"functions" binding:"required"`
+	Functions []*Function            `json:"functions" binding:"required"`
 	Data      map[string]interface{} `json:"data"`
 }
 
@@ -52,7 +51,7 @@ func (h *HttpJobHandler) Create(c *gin.Context) {
 		return
 	}
 
-	var job *async.Job
+	var job *Job
 	if job, err = h.jm.Create(in.Name, in.Functions, in.Data); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
@@ -65,7 +64,7 @@ func (h *HttpJobHandler) Create(c *gin.Context) {
 	})
 }
 
-func NewHttpJobHandler(e *gin.Engine, jm async.JobManager) {
+func NewHttpJobHandler(e *gin.Engine, jm JobManager) {
 
 	handler := &HttpJobHandler{
 		jm: jm,

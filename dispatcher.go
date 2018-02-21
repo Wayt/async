@@ -1,7 +1,5 @@
 package async
 
-import "time"
-
 type Dispatcher interface {
 	Dispatch(*Job) error
 }
@@ -51,7 +49,7 @@ func (d *dispatcher) executeCurrentFunction(j *Job) error {
 	data := j.Data
 
 	// Create a callback
-	callback, err := d.callbackMgr.Create(j.ID, time.Minute)
+	callback, err := d.callbackMgr.Create(j.ID, DefaultCallbackTimeout)
 	if err != nil {
 		return err
 	}
