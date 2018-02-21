@@ -2,7 +2,6 @@ package async
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	cache "github.com/pmylund/go-cache"
@@ -36,10 +35,10 @@ type Job struct {
 // JobRepository
 
 type JobRepository interface {
-	Get(id uuid.UUID) (*Job, error)
+	Get(uuid.UUID) (*Job, error)
 	Create(*Job) (*Job, error)
 	Update(*Job) (*Job, error)
-	Delete(id interface{}) error
+	Delete(id uuid.UUID) error
 
 	GetPending() (*Job, bool)
 	Schedule(*Job) error
@@ -80,9 +79,10 @@ func (r *memoryJobRepository) Create(j *Job) (*Job, error) {
 	}
 
 	j.CreatedAt = time.Now()
+
 	r.db.Set(j.ID.String(), j, cache.NoExpiration)
 
-	return j, r.Schedule(j)
+	return j, nil
 }
 
 func (r *memoryJobRepository) Schedule(j *Job) error {
@@ -99,9 +99,9 @@ func (r *memoryJobRepository) Update(j *Job) (*Job, error) {
 	return j, nil
 }
 
-func (r *memoryJobRepository) Delete(id interface{}) error {
+func (r *memoryJobRepository) Delete(id uuid.UUID) error {
 
-	r.db.Delete(fmt.Sprintf("%v", id))
+	r.db.Delete(id.String())
 
 	return nil
 }

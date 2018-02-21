@@ -14,7 +14,7 @@ var (
 )
 
 type FunctionExecutor interface {
-	Execute(Function, map[string]interface{}) error
+	Execute(*Callback, Function, map[string]interface{}) error
 }
 
 type defaultFunctionExecutor struct {
@@ -30,12 +30,15 @@ func NewFunctionExecutor(url string) FunctionExecutor {
 	}
 }
 
-func (e *defaultFunctionExecutor) Execute(f Function, data map[string]interface{}) error {
+func (e *defaultFunctionExecutor) Execute(callback *Callback, f Function, data map[string]interface{}) error {
+
+	// Create a new callback
 
 	body, _ := json.Marshal(cli.FunctionRequest{
 		Function: f.Name,
 		Args:     f.Args,
 		Data:     data,
+		Callback: callback.BuildFunctionCallback(),
 	})
 
 	req, err := http.NewRequest("POST", e.url+cli.Path, bytes.NewReader(body))

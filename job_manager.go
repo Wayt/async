@@ -20,7 +20,7 @@ type jobManager struct {
 	repository JobRepository
 }
 
-func NewJobManager(repo JobRepository) *jobManager {
+func NewJobManager(repo JobRepository) JobManager {
 
 	return &jobManager{
 		repository: repo,
@@ -45,7 +45,12 @@ func (m *jobManager) Create(name string, functions []*Function, data map[string]
 		CurrentFunction: 0,
 	}
 
-	return m.repository.Create(j)
+	var err error
+	if j, err = m.repository.Create(j); err != nil {
+		return nil, err
+	}
+
+	return j, m.repository.Schedule(j)
 }
 
 func (m *jobManager) SetState(j *Job, state string) error {

@@ -33,6 +33,8 @@ func (d *dispatcher) dispatch(in FunctionRequest) error {
 		return fmt.Errorf("unknown function: %s", in.Function)
 	}
 
+	logger.Printf("Having callback: POST %s", in.Callback.URL)
+
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

@@ -46,9 +46,12 @@ func main() {
 		jr,
 	)
 
+	cr := async.NewCallbackRepository()
+	cm := async.NewCallbackManager(cr)
+
 	//go jm.BackgroundProcess()
 
-	d := async.NewDispatcher(jm, async.NewFunctionExecutor(fmt.Sprintf("http://127.0.0.1:%d", cli.Port)))
+	d := async.NewDispatcher(jm, cm, async.NewFunctionExecutor(fmt.Sprintf("http://127.0.0.1:%d", cli.Port)))
 	p := async.NewPoller(jr)
 	go p.Poll(d)
 
