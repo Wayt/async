@@ -1,4 +1,4 @@
-package async
+package server
 
 type Dispatcher interface {
 	Dispatch(*Job) error

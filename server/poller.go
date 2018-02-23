@@ -1,4 +1,4 @@
-package async
+package server
 
 type Poller interface {
 	Poll(Dispatcher)
