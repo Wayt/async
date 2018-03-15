@@ -5,34 +5,34 @@ import (
 	"fmt"
 	"time"
 
-	cli "github.com/wayt/async/client/async"
+	"github.com/wayt/async/client"
 )
 
 func init() {
 
-	cli.Func("/v1/say-hello-world", func(ctx context.Context) error {
+	client.Func("/v1/say-hello-world", func(ctx context.Context) error {
 
 		fmt.Println("Hello World !")
 
 		return nil
 	})
 
-	cli.Func("/v1/test-1", func(ctx context.Context) error {
+	client.Func("/v1/test-1", func(ctx context.Context) error {
 
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		fmt.Println("Test 1")
 		return nil
 	})
 
-	cli.Func("/v1/test-2", func(ctx context.Context) error {
+	client.Func("/v1/test-2", func(ctx context.Context) error {
 
-		fmt.Println("Test 1")
+		fmt.Println("Test 2")
 		return nil
 	})
 
-	cli.Func("/v1/test-fail", func(ctx context.Context) error {
+	client.Func("/v1/test-fail", func(ctx context.Context) error {
 
-		time.Sleep(15 * time.Second)
+		time.Sleep(1 * time.Second)
 		fmt.Println("Test fail")
 		return fmt.Errorf("Test fail")
 	})
@@ -40,5 +40,5 @@ func init() {
 
 func main() {
 	// Run a test client
-	cli.Run()
+	client.Run()
 }

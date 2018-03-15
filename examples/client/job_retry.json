@@ -1,0 +1,12 @@
+{
+	"name": "test",
+	"functions": [
+		{
+			"name":"/v1/test-fail",
+			"args":[1,"2",3],
+			"retry_options": {
+				"retry_limit": 3
+			}
+		}
+	]
+}

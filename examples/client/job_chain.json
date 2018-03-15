@@ -1,0 +1,23 @@
+{
+    "name": "test",
+    "functions": [
+        {
+            "name":"/v1/test-1",
+            "retry_options": {
+                "retry_limit": 3
+            }
+        },
+        {
+            "name":"/v1/test-2",
+            "retry_options": {
+                "retry_limit": 3
+            }
+        },
+        {
+            "name":"/v1/say-hello-world",
+            "retry_options": {
+                "retry_limit": 3
+            }
+        }
+    ]
+}
