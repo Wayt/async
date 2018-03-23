@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/wayt/async/server/function"
+	"github.com/wayt/async/server/worker"
 )
 
 type handler func(c *context, w http.ResponseWriter, r *http.Request)
@@ -93,7 +94,7 @@ func getWorkers(c *context, w http.ResponseWriter, r *http.Request) {
 	workers := c.server.listWorkers()
 
 	result := struct {
-		Workers []*Worker
+		Workers []*worker.Worker
 	}{
 		Workers: workers,
 	}

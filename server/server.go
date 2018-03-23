@@ -12,6 +12,7 @@ import (
 	"github.com/wayt/async/server/broker"
 	"github.com/wayt/async/server/function"
 	"github.com/wayt/async/server/job"
+	"github.com/wayt/async/server/worker"
 
 	"github.com/spf13/viper"
 )
@@ -31,8 +32,8 @@ type Server struct {
 	sync.RWMutex
 
 	router         *mux.Router
-	workers        map[string]*Worker // Registered workers
-	pendingWorkers map[string]*Worker // Registration pending workers
+	workers        map[string]*worker.Worker // Registered workers
+	pendingWorkers map[string]*worker.Worker // Registration pending workers
 
 	broker broker.Broker
 
@@ -53,8 +54,8 @@ func New() *Server {
 
 	s := &Server{
 		router:         mux.NewRouter(),
-		workers:        make(map[string]*Worker),
-		pendingWorkers: make(map[string]*Worker),
+		workers:        make(map[string]*worker.Worker),
+		pendingWorkers: make(map[string]*worker.Worker),
 		broker:         broker.NewMemoryBroker(),
 		httpClient:     http.DefaultClient,
 	}
@@ -107,7 +108,7 @@ func (s *Server) addWorker(url string) error {
 
 	log.Printf("server: new worker registration request for %s", url)
 
-	w := NewWorker(url)
+	w := worker.New(url)
 
 	s.Lock()
 	s.pendingWorkers[url] = w
@@ -118,7 +119,7 @@ func (s *Server) addWorker(url string) error {
 	return nil
 }
 
-func (s *Server) connectWorker(w *Worker) {
+func (s *Server) connectWorker(w *worker.Worker) {
 
 	if err := w.Connect(s.httpClient); err != nil {
 		log.Printf("server: failed to validate pending worker %s: %v", w.URL, err)
@@ -137,14 +138,19 @@ func (s *Server) connectWorker(w *Worker) {
 	if old, exists := s.workers[w.ID]; exists {
 		// TODO: better handle id conflict
 		log.Printf("server: worker ID duplicated, %s shared by %s and %s. Removing older worker.", w.ID, old.URL, w.URL)
+		old.Disconnect()
 		delete(s.workers, old.ID)
 	}
 
 	// Engine validated, move from pendingWorkers
 	delete(s.pendingWorkers, w.URL)
+	w.ValidationComplete()
 	s.workers[w.ID] = w
 
 	// Start sending job to worker
+	// FIXME: this should be done in the worker
+	// So parallel processing can be updated on the fly
+	// And processing can be stopped when worker stop
 	for i := 0; i < w.MaxParallel; i++ {
 		go s.broker.Consume(w)
 	}
@@ -154,11 +160,11 @@ func (s *Server) connectWorker(w *Worker) {
 
 // listWorkers returns all the workers in the server
 // This is for reporting, not scheduling, hence pendingWorkers are included
-func (s *Server) listWorkers() []*Worker {
+func (s *Server) listWorkers() []*worker.Worker {
 	s.RLock()
 	defer s.RUnlock()
 
-	list := make([]*Worker, 0, len(s.pendingWorkers)+len(s.workers))
+	list := make([]*worker.Worker, 0, len(s.pendingWorkers)+len(s.workers))
 	for _, w := range s.pendingWorkers {
 		list = append(list, w)
 	}
@@ -170,11 +176,11 @@ func (s *Server) listWorkers() []*Worker {
 }
 
 // ListActiveWorkers returns all validated workers in the server
-func (s *Server) listActiveWorkers() []*Worker {
+func (s *Server) listActiveWorkers() []*worker.Worker {
 	s.RLock()
 	defer s.RUnlock()
 
-	list := make([]*Worker, 0, len(s.workers))
+	list := make([]*worker.Worker, 0, len(s.workers))
 	for _, w := range s.workers {
 		list = append(list, w)
 	}

@@ -152,7 +152,7 @@ type V1InfoResult struct {
 
 func (e *Engine) getV1Info(w http.ResponseWriter, r *http.Request) {
 
-	logger.Printf("HTTP Info request from %s", r.RemoteAddr)
+	// 	logger.Printf("HTTP Info request from %s", r.RemoteAddr)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(V1InfoResult{
