@@ -1,105 +1,101 @@
 # async
 
+Async is a function worker scheduling framework.
+
+This is currently a proof of concept and is prone to changes.
+
+Any feedback are warmly welcome :)
+
 ## Glossary
 
 * `function`: A function is defined by client, and run code. It has a `name`, arguments and retry options.
 * `job`: A job is a scheduled task with a list of `function`, it has an `id`, global parameter (`data`) and a `state`.
+* `worker`: And async client that register himself on a server with the list of function it is able to run.
+* `server`: The central component that receive job and dispatch execution accross workers.
 
 ## Getting started
 
-A sample server is available [main.md](examples/server/main.go)
+An example is available using docker, see [example](example/worker/).
+
+Tested with:
+* Docker version 17.07.0-ce
+* docker-compose version 1.16.1
+* [httpie](https://github.com/jakubroztocil/httpie):
+
 
 You can execute it:
 ```bash
-$ go run main.go
-[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+# go into example directory
+async# cd example/
 
-[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
- - using env:	export GIN_MODE=release
- - using code:	gin.SetMode(gin.ReleaseMode)
+# build images
+example# docker-compose build
+[...]
+Successfully tagged example_server:latest
+[...]
+Successfully tagged example_worker:latest
 
-[GIN-debug] GET    /v1/job/:job_id           --> github.com/wayt/async/api.(*HttpJobHandler).Get-fm (3 handlers)
-[GIN-debug] POST   /v1/job                   --> github.com/wayt/async/api.(*HttpJobHandler).Create-fm (3 handlers)
-[GIN-debug] Listening and serving HTTP on :8080
-[async] 2018/02/15 22:49:00 Having 4 function(s):
-[async] 2018/02/15 22:49:00 	- /v1/say-hello-world
-[async] 2018/02/15 22:49:00 	- /v1/test-1
-[async] 2018/02/15 22:49:00 	- /v1/test-2
-[async] 2018/02/15 22:49:00 	- /v1/test-fail
-[async] 2018/02/15 22:49:00 Listening and serving HTTP on :8179
-```
+# Run example with 2 workers
+example# docker-compose up -d --scale worker=2 --scale server=1
+Creating network "example_default" with the default driver
+Creating example_server_1 ...
+Creating example_server_1 ... done
+Creating example_worker_1 ...
+Creating example_worker_1 ... done
+Creating example_worker_1
+Creating example_worker_2 ... done
 
-And create a job using [httpie](https://github.com/jakubroztocil/httpie):
-```bash
-$ http POST localhost:8080/v1/job name=test functions:='[{"name":"/v1/test-1"},{"name":"/v1/test-fail","args":[1,"2",3], "retry_count":0, "retry_options":{"retry_limit": 3}}, {"name":"/v1/test-2"}]'
-```
+# check logs
+example# docker-compose logs -f
 
-## Job API
+# schedule a job
+example# http POST 127.0.0.1:8000/v1/job < worker/job_chain.json
+HTTP/1.1 200 OK
+[...]
+    "job_id": "a2160ebb-81be-4a46-a7dd-b665ac5c839f",
+}
 
-### API Reference
+# retrieve job information
+example# http GET 127.0.0.1:8000/v1/job/a2160ebb-81be-4a46-a7dd-b665ac5c839f
+HTTP/1.1 200 OK
+Content-Length: 438
+Content-Type: text/plain; charset=utf-8
+Date: Mon, 21 May 2018 23:38:21 GMT
 
-Both input parameters and output result are in json.
-
-#### Types
-
-StateEnum:
-```
-[
-    "pending",
-    "doing",
-    "done",
-    "failed"
-]
-```
-
-Job:
-```
 {
-    "id": "uuid",
-    "name": "string",
-    "functions": "[]Function",
-    "state": "StateEnum"
-    "data": "[string]object",
-    "created_at": "time",
-    "updated_at": "time"
+    "Job": {
+        "created_at": "2018-05-21T23:37:14.288834016Z",
+        "current_function": 2,
+        "data": null,
+        "functions": [
+            {
+                "name": "/v1/test-1",
+                "retry_count": 1,
+                "retry_options": {
+                    "retry_limit": 3
+                }
+            },
+            {
+                "name": "/v1/test-2",
+                "retry_count": 1,
+                "retry_options": {
+                    "retry_limit": 3
+                }
+            },
+            {
+                "name": "/v1/say-hello-world",
+                "retry_count": 1,
+                "retry_options": {
+                    "retry_limit": 3
+                }
+            }
+        ],
+        "job_id": "a2160ebb-81be-4a46-a7dd-b665ac5c839f",
+        "name": "test",
+        "scheduled_at": "2018-05-21T23:37:15.291637675Z"
+    }
 }
 ```
-
-Function:
-```
-{
-    "name": "string",
-    "args": "[]object",
-    "retry_count": "int32",
-    "retry_options": "RetryOption"
-}
-```
-
-RetryOption:
-```
-{
-    "retry_limit": "int32"
-}
-```
-
-#### Create a job
-
-`POST /v1/job`
-
-Parameters:
-* `name` (string): the job name
-* `functions` (list of `Function`): Ordered list of function for this job
-
-Result: `Job`
-
-#### Get a job
-
-`GET /v1/job/:job_id`
-
-Parameters:
-* `job_id` (uuid): job uuid
-
-Result: `Job`
 
 ## Licence
 

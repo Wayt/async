@@ -1,15 +1,16 @@
 package worker
 
 import (
+	"context"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/wayt/async/client"
+	pb "github.com/wayt/async/pb/worker"
 	"github.com/wayt/async/server/function"
 	"github.com/wayt/async/server/job"
+	"google.golang.org/grpc"
 )
 
 type workerState string
@@ -23,6 +24,7 @@ const (
 
 const (
 	workerRefreshInterval = 1 * time.Second
+	maxConnectionFailure  = 3
 )
 
 // Worker represents an async worker node
@@ -31,28 +33,53 @@ type Worker struct {
 
 	stopCh chan struct{}
 
-	ID          string
-	Version     string
-	MaxParallel int
+	ID           string
+	Version      string
+	MaxParallel  int32
+	Capabilities []string // List of function handled by worker
 
-	state workerState
-	URL   string
+	ConnectionFailure int32
+	State             workerState
+	Address           string
 
-	apiClient client.APIClient
+	client pb.WorkerClient
 }
 
-func New(url string) *Worker {
+func New(address string) *Worker {
 
 	return &Worker{
-		stopCh: make(chan struct{}),
-		state:  statePending,
-		URL:    url,
+		stopCh:            make(chan struct{}),
+		ConnectionFailure: 0,
+		State:             statePending,
+		Address:           address,
 	}
 }
 
-func (w *Worker) Connect(httpClient *http.Client) error {
+func (w *Worker) GetCapabilities() []string { w.RLock(); defer w.RUnlock(); return w.Capabilities }
 
-	w.apiClient = client.NewAPIClient(w.URL, httpClient)
+func (w *Worker) Connect() error {
+
+	log.Printf("worker: connect %s", w.ID)
+
+	conn, err := grpc.Dial(w.Address, grpc.WithInsecure(),
+		grpc.WithBackoffConfig(grpc.BackoffConfig{
+			MaxDelay: time.Second * 10,
+		}))
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		tk := time.NewTicker(1 * time.Second)
+		for range tk.C {
+			if !w.IsActive() {
+				conn.Close()
+				return
+			}
+		}
+	}()
+
+	w.client = pb.NewWorkerClient(conn)
 
 	if err := w.updateInfo(); err != nil {
 		return err
@@ -67,8 +94,10 @@ func (w *Worker) Disconnect() {
 	w.Lock()
 	defer w.Unlock()
 
+	log.Printf("worker: disconnecting %s", w.ID)
+
 	// Resource clean up should be done only once
-	if w.state == stateDisconnected {
+	if w.State == stateDisconnected {
 		return
 	}
 
@@ -76,13 +105,20 @@ func (w *Worker) Disconnect() {
 	close(w.stopCh)
 
 	// TODO: Stop processing jobs
+	// Currently, the broker stop sending job when worker is stopped
 
-	w.state = stateDisconnected
+	w.State = stateDisconnected
+
+	w.client = nil
+}
+
+func (w *Worker) Stopped() <-chan struct{} {
+	return w.stopCh
 }
 
 func (w *Worker) updateInfo() error {
 
-	info, err := w.apiClient.Info()
+	info, err := w.client.Info(context.Background(), &pb.InfoRequest{})
 	w.checkConnectionErr(err)
 	if err != nil {
 		return err
@@ -91,9 +127,10 @@ func (w *Worker) updateInfo() error {
 	w.Lock()
 	defer w.Unlock()
 
-	w.ID = info.ID
-	w.Version = info.Version
-	w.MaxParallel = info.MaxParallel
+	w.ID = info.GetId()
+	w.Version = info.GetVersion()
+	w.MaxParallel = info.GetMaxParallel()
+	w.Capabilities = info.GetCapabilities()
 
 	return nil
 }
@@ -101,11 +138,11 @@ func (w *Worker) updateInfo() error {
 func (w *Worker) ValidationComplete() {
 	w.Lock()
 	defer w.Unlock()
-	if w.state != statePending {
+	if w.State != statePending {
 		return
 	}
 
-	w.state = stateActive
+	w.State = stateActive
 	go w.refreshLoop()
 }
 
@@ -113,21 +150,21 @@ func (w *Worker) ValidationComplete() {
 func (w *Worker) setState(state workerState) {
 	w.Lock()
 	defer w.Unlock()
-	w.state = state
+	w.State = state
 }
 
 // IsActive returns true if the worker is active
 func (w *Worker) IsActive() bool {
 	w.RLock()
 	defer w.RUnlock()
-	return w.state == stateActive
+	return w.State == stateActive
 }
 
 // checkConnectionErr checks error from client response and adjusts worker healthy indicators
 func (w *Worker) checkConnectionErr(err error) {
 	if err == nil {
 
-		if w.state == stateUnhealthy {
+		if w.State == stateUnhealthy {
 			w.setState(stateActive)
 			log.Printf("worker: %s reconnected", w.ID)
 		}
@@ -136,10 +173,18 @@ func (w *Worker) checkConnectionErr(err error) {
 
 	if IsConnectionError(err) {
 		log.Printf("worker: connection error")
+		w.Lock()
+		w.ConnectionFailure += 1
+		w.Unlock()
 
-		if w.state == stateActive {
+		if w.State == stateActive {
 			w.setState(stateUnhealthy)
 			log.Printf("worker: %s unhealthy", w.ID)
+		}
+
+		if w.ConnectionFailure >= maxConnectionFailure {
+			w.Disconnect()
+
 		}
 	}
 
@@ -159,13 +204,19 @@ func (w *Worker) refreshLoop() {
 			return
 		}
 
-		w.updateInfo()
+		if w.IsActive() {
+			w.updateInfo()
+		} else {
+			if err := w.Connect(); err != nil {
+				log.Printf("worker: %s", err)
+			}
+		}
 	}
 }
 
 func (w *Worker) Process(j *job.Job) (bool, error) {
 
-	log.Printf("worker: %s Process job: %s (%s)\n", w.ID, j.Name, j.ID.String())
+	log.Printf("worker: %s Process job: %s (%s)\n", w.ID, j.Name, j.ID)
 
 	if err := w.processFunction(j.GetCurrentFunction()); err != nil {
 		switch err {
@@ -185,11 +236,10 @@ func (w *Worker) processFunction(f *function.Function) error {
 
 	f.IncrRetryCount()
 
-	// Execute function
-	err := w.apiClient.Exec(&client.V1ExecRequest{
+	_, err := w.client.Exec(context.Background(), &pb.ExecRequest{
 		Function: f.Name,
-		Args:     f.Args,
-		Data:     nil,
+		// Args:     args,
+		// Data:     nil,
 	})
 	w.checkConnectionErr(err)
 
@@ -212,6 +262,11 @@ func (w *Worker) processFunction(f *function.Function) error {
 
 // IsConnectionError returns true when err is connection problem
 func IsConnectionError(err error) bool {
+	if err == grpc.ErrClientConnClosing ||
+		err == grpc.ErrClientConnTimeout {
+		return true
+	}
+
 	if strings.Contains(err.Error(), "onnection refused") {
 		return true
 	}

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+
+package worker;
+
+// The Worker service definition.
+service Worker {
+  // Request client informations
+  rpc Info (InfoRequest) returns (InfoReply) {}
+  rpc Exec(ExecRequest) returns (ExecReply) {}
+}
+
+// Worker information request
+message InfoRequest {
+}
+
+// Worker information reply
+message InfoReply {
+  string id = 1;
+  string version = 2;
+  int32 max_parallel = 3;
+  repeated string capabilities = 4;
+}
+
+// Worker execution request
+message ExecRequest {
+  string function = 1;
+  google.protobuf.Any args = 2;
+  google.protobuf.Any data = 3;
+}
+
+// Worker execution reply
+message ExecReply {
+}

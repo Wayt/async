@@ -4,29 +4,36 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/gorilla/mux"
+	uuid "github.com/satori/go.uuid"
+
 	"github.com/wayt/async/server/function"
+	"github.com/wayt/async/server/job"
 	"github.com/wayt/async/server/worker"
 )
 
-type handler func(c *context, w http.ResponseWriter, r *http.Request)
+type handler func(c *handlerContext, w http.ResponseWriter, r *http.Request)
 
 var routes = map[string]map[string]handler{
 	"POST": {
-		"/v1/worker": postWorker,
-		"/v1/job":    postJob,
+		"/v1/job": postJob,
 	},
 	"GET": {
-		"/v1/worker": getWorkers,
+		"/v1/worker":       getWorkers,
+		"/v1/job":          getJobs,
+		"/v1/job/{job_id}": getJob,
 	},
 }
 
-type context struct {
+type handlerContext struct {
 	server *Server
 }
 
 func setupHandlers(s *Server) {
 
-	context := &context{
+	s.router = mux.NewRouter()
+
+	c := &handlerContext{
 		server: s,
 	}
 
@@ -38,7 +45,7 @@ func setupHandlers(s *Server) {
 			localFct := fct
 
 			wrap := func(w http.ResponseWriter, r *http.Request) {
-				localFct(context, w, r)
+				localFct(c, w, r)
 			}
 			s.router.Path(localRoute).Methods(localMethod).HandlerFunc(wrap)
 		}
@@ -46,7 +53,7 @@ func setupHandlers(s *Server) {
 
 }
 
-func postJob(c *context, w http.ResponseWriter, r *http.Request) {
+func postJob(c *handlerContext, w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name      string                 `json:"name" binding:"required"`
 		Functions []*function.Function   `json:"functions" binding:"required"`
@@ -70,26 +77,7 @@ func postJob(c *context, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TODO: hearthbeat
-func postWorker(c *context, w http.ResponseWriter, r *http.Request) {
-
-	var in struct {
-		URL string `json:"url"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if err := c.server.addWorker(in.URL); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-func getWorkers(c *context, w http.ResponseWriter, r *http.Request) {
+func getWorkers(c *handlerContext, w http.ResponseWriter, r *http.Request) {
 
 	workers := c.server.listWorkers()
 
@@ -97,6 +85,51 @@ func getWorkers(c *context, w http.ResponseWriter, r *http.Request) {
 		Workers []*worker.Worker
 	}{
 		Workers: workers,
+	}
+
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func getJobs(c *handlerContext, w http.ResponseWriter, r *http.Request) {
+	jobs := c.server.broker.List()
+
+	result := struct {
+		Count int
+		Jobs  []*job.Job
+	}{
+		Count: len(jobs),
+		Jobs:  jobs,
+	}
+
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func getJob(c *handlerContext, w http.ResponseWriter, r *http.Request) {
+
+	jobIDStr := mux.Vars(r)["job_id"]
+
+	jobID, err := uuid.FromString(jobIDStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	j, err := c.server.broker.Get(jobID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := struct {
+		Job *job.Job
+	}{
+		Job: j,
 	}
 
 	if err := json.NewEncoder(w).Encode(result); err != nil {

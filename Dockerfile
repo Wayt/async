@@ -4,11 +4,14 @@ RUN mkdir -p /go/src/github.com/wayt/async
 ADD . /go/src/github.com/wayt/async/
 
 RUN cd /go/src/github.com/wayt/async && \
-    go build -o async
+    go build -o async-bin
+
 
 FROM alpine
-WORKDIR /app
-COPY --from=build /go/src/github.com/wayt/async/async /app/
+COPY --from=build /go/src/github.com/wayt/async/async-bin /usr/bin/async
 
+# Server port
 EXPOSE 8080
-ENTRYPOINT /app/async server
+EXPOSE 8000
+
+ENTRYPOINT /usr/bin/async server

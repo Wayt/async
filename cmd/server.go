@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"log"
+
 	"github.com/spf13/cobra"
 	"github.com/wayt/async/server"
 )
@@ -15,6 +17,8 @@ var serverCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 
 		s := server.New()
-		s.Run()
+		if err := s.Run(); err != nil {
+			log.Fatal(err)
+		}
 	},
 }

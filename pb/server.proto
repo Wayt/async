@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package server;
+
+// The Server service definition.
+service Server {
+  // Register a worker
+  rpc RegisterWorker (RegisterWorkerRequest) returns (RegisterWorkerReply) {}
+}
+
+// Worker registering request
+message RegisterWorkerRequest {
+  string address = 1;
+}
+
+// Worker registering reply
+message RegisterWorkerReply {
+  string state = 1;
+}
